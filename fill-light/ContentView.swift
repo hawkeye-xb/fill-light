@@ -203,13 +203,12 @@ struct CameraView: View {
         ZStack {
             // 相机预览
             CameraPreviewView(camera: camera)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(width: 300, height: 400)
                 .cornerRadius(20)
                 .overlay(
                     RoundedRectangle(cornerRadius: 20)
                         .stroke(Color.white, lineWidth: 2)
                 )
-                .padding(20)
             
             // 控制按钮
             VStack {
@@ -255,22 +254,16 @@ struct CameraPreviewView: UIViewRepresentable {
         let view = UIView(frame: UIScreen.main.bounds)
         camera.preview = AVCaptureVideoPreviewLayer(session: camera.session)
         camera.preview.frame = view.frame
-        camera.preview.videoGravity = .resizeAspectFit  // 修改为 aspectFit 以保持比例
+        camera.preview.videoGravity = .resizeAspectFill
         view.layer.addSublayer(camera.preview)
         return view
     }
     
-    func updateUIView(_ uiView: UIView, context: Context) {
-        camera.preview.frame = uiView.frame
-    }
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
 // 相机模型
-// 修改 CameraModel，添加状态反馈
 class CameraModel: NSObject, ObservableObject {
-    @Published var showingAlert = false
-    @Published var alertMessage = ""
-    
     var session = AVCaptureSession()
     var preview: AVCaptureVideoPreviewLayer!
     
@@ -306,16 +299,6 @@ class CameraModel: NSObject, ObservableObject {
         let settings = AVCapturePhotoSettings()
         output.capturePhoto(with: settings, delegate: self)
     }
-    
-    func showAlert(success: Bool) {
-        alertMessage = success ? "照片已保存到相册" : "保存照片失败"
-        showingAlert = true
-        
-        // 3秒后自动隐藏提示
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            self.showingAlert = false
-        }
-    }
 }
 
 extension CameraModel: AVCapturePhotoCaptureDelegate {
@@ -323,9 +306,6 @@ extension CameraModel: AVCapturePhotoCaptureDelegate {
         if let imageData = photo.fileDataRepresentation(),
            let image = UIImage(data: imageData) {
             UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-            showAlert(success: true)
-        } else {
-            showAlert(success: false)
         }
     }
 }
