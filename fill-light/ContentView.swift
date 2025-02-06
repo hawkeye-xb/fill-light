@@ -6,6 +6,8 @@
 //
 import SwiftUI
 import UIKit
+import AVFoundation
+import Photos
 
 // 添加颜色预设模型
 struct ColorPreset: Codable, Identifiable {
@@ -23,10 +25,19 @@ struct ContentView: View {
     @State private var blue: Double = 1.0
     @State private var alpha: Double = 1.0
     @State private var isEditMode: Bool = true
+    @State private var isSelfieMode: Bool = false
     @State private var screenBrightness: Double = UIScreen.main.brightness
     @State private var savedPresets: [ColorPreset] = []
     
-    // 添加数据持久化方法
+    private func applyPreset(_ preset: ColorPreset) {
+        red = preset.red
+        green = preset.green
+        blue = preset.blue
+        alpha = preset.alpha
+        screenBrightness = preset.brightness
+        UIScreen.main.brightness = preset.brightness
+    }
+    
     private func savePreset() {
         let newPreset = ColorPreset(red: red, green: green, blue: blue, 
                                   alpha: alpha, brightness: screenBrightness)
@@ -43,14 +54,12 @@ struct ContentView: View {
         }
     }
     
-    // 添加应用预设方法
-    private func applyPreset(_ preset: ColorPreset) {
-        red = preset.red
-        green = preset.green
-        blue = preset.blue
-        alpha = preset.alpha
-        screenBrightness = preset.brightness
-        UIScreen.main.brightness = preset.brightness
+    // 添加删除预设方法
+    private func deletePreset(_ preset: ColorPreset) {
+        savedPresets.removeAll { $0.id == preset.id }
+        if let encoded = try? JSONEncoder().encode(savedPresets) {
+            UserDefaults.standard.set(encoded, forKey: "ColorPresets")
+        }
     }
     
     var body: some View {
@@ -73,6 +82,11 @@ struct ContentView: View {
                                         .frame(width: 50, height: 50)
                                         .overlay(Circle().stroke(Color.white, lineWidth: 1))
                                         .shadow(color: .black.opacity(0.3), radius: 3)
+                                }
+                                .contextMenu {
+                                    Button(role: .destructive, action: { deletePreset(preset) }) {
+                                        Label("删除", systemImage: "trash")
+                                    }
                                 }
                             }
                         }
@@ -101,20 +115,54 @@ struct ContentView: View {
                         .padding()
                         
                         HStack(spacing: 15) {
-                            Button(action: savePreset) {
-                                Text("保存当前颜色")
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .background(Color.green)
-                                    .cornerRadius(10)
-                            }
-                            
-                            Button(action: { isEditMode.toggle() }) {
-                                Text("切换到纯净模式")
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .background(Color.blue)
-                                    .cornerRadius(10)
+                            // 修改按钮布局
+                            VStack(spacing: 12) {
+                                HStack(spacing: 20) {
+                                    Button(action: savePreset) {
+                                        VStack {
+                                            Image(systemName: "square.and.arrow.down")
+                                                .font(.system(size: 20))
+                                            Text("保存")
+                                                .font(.system(size: 14))
+                                        }
+                                        .foregroundColor(.white)
+                                        .frame(width: 60)
+                                        .padding(.vertical, 8)
+                                        .background(Color.green)
+                                        .cornerRadius(10)
+                                    }
+                                    
+                                    Button(action: { isEditMode.toggle() }) {
+                                        VStack {
+                                            Image(systemName: "eye")
+                                                .font(.system(size: 20))
+                                            Text("纯净")
+                                                .font(.system(size: 14))
+                                        }
+                                        .foregroundColor(.white)
+                                        .frame(width: 60)
+                                        .padding(.vertical, 8)
+                                        .background(Color.blue)
+                                        .cornerRadius(10)
+                                    }
+                                    
+                                    Button(action: { 
+                                        isEditMode = false
+                                        isSelfieMode = true 
+                                    }) {
+                                        VStack {
+                                            Image(systemName: "camera")
+                                                .font(.system(size: 20))
+                                            Text("自拍")
+                                                .font(.system(size: 14))
+                                        }
+                                        .foregroundColor(.white)
+                                        .frame(width: 60)
+                                        .padding(.vertical, 8)
+                                        .background(Color.purple)
+                                        .cornerRadius(10)
+                                    }
+                                }
                             }
                         }
                     }
@@ -123,6 +171,8 @@ struct ContentView: View {
                     .cornerRadius(15)
                 }
                 .padding()
+            } else if isSelfieMode {
+                CameraView(isSelfieMode: $isSelfieMode, isEditMode: $isEditMode)
             } else {
                 // 纯净模式下只保留切换按钮
                 VStack {
@@ -140,6 +190,143 @@ struct ContentView: View {
             }
         }
         .onAppear(perform: loadPresets)
+    }
+}
+
+// 添加相机视图
+struct CameraView: View {
+    @Binding var isSelfieMode: Bool
+    @Binding var isEditMode: Bool
+    @StateObject private var camera = CameraModel()
+    
+    var body: some View {
+        ZStack {
+            // 相机预览
+            CameraPreviewView(camera: camera)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .cornerRadius(20)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(Color.white, lineWidth: 2)
+                )
+                .padding(20)
+            
+            // 控制按钮
+            VStack {
+                HStack {
+                    Button(action: {
+                        isSelfieMode = false
+                        isEditMode = true  // 返回编辑模式
+                    }) {
+                        Image(systemName: "xmark")
+                            .foregroundColor(.white)
+                            .font(.system(size: 24))
+                            .padding()
+                            .background(Color.black.opacity(0.5))
+                            .clipShape(Circle())
+                    }
+                    Spacer()
+                }
+                
+                Spacer()
+                
+                Button(action: { camera.takePicture() }) {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 70, height: 70)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.black.opacity(0.3), lineWidth: 2)
+                                .padding(4)
+                        )
+                }
+                .padding(.bottom, 30)
+            }
+            .padding()
+        }
+    }
+}
+
+// 相机预览视图
+struct CameraPreviewView: UIViewRepresentable {
+    @ObservedObject var camera: CameraModel
+    
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: UIScreen.main.bounds)
+        camera.preview = AVCaptureVideoPreviewLayer(session: camera.session)
+        camera.preview.frame = view.frame
+        camera.preview.videoGravity = .resizeAspectFit  // 修改为 aspectFit 以保持比例
+        view.layer.addSublayer(camera.preview)
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {
+        camera.preview.frame = uiView.frame
+    }
+}
+
+// 相机模型
+// 修改 CameraModel，添加状态反馈
+class CameraModel: NSObject, ObservableObject {
+    @Published var showingAlert = false
+    @Published var alertMessage = ""
+    
+    var session = AVCaptureSession()
+    var preview: AVCaptureVideoPreviewLayer!
+    
+    override init() {
+        super.init()
+        setupCamera()
+    }
+    
+    func setupCamera() {
+        if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) {
+            do {
+                let input = try AVCaptureDeviceInput(device: device)
+                if session.canAddInput(input) {
+                    session.addInput(input)
+                }
+                
+                let output = AVCapturePhotoOutput()
+                if session.canAddOutput(output) {
+                    session.addOutput(output)
+                }
+                
+                DispatchQueue.global(qos: .background).async {
+                    self.session.startRunning()
+                }
+            } catch {
+                print("相机设置错误：\(error.localizedDescription)")
+            }
+        }
+    }
+    
+    func takePicture() {
+        guard let output = session.outputs.first as? AVCapturePhotoOutput else { return }
+        let settings = AVCapturePhotoSettings()
+        output.capturePhoto(with: settings, delegate: self)
+    }
+    
+    func showAlert(success: Bool) {
+        alertMessage = success ? "照片已保存到相册" : "保存照片失败"
+        showingAlert = true
+        
+        // 3秒后自动隐藏提示
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            self.showingAlert = false
+        }
+    }
+}
+
+extension CameraModel: AVCapturePhotoCaptureDelegate {
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        if let imageData = photo.fileDataRepresentation(),
+           let image = UIImage(data: imageData) {
+            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+            showAlert(success: true)
+        } else {
+            showAlert(success: false)
+        }
     }
 }
 
